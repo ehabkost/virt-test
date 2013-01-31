@@ -23,6 +23,10 @@ def run_cpuid(test, params, env):
     if (params.get("xfail") is not None) and (params.get("xfail") == "yes"):
         xfail = True
 
+    qemu_cpu_help_text = utils.run(qemu_binary + " -cpu ?").stdout
+    cpu_re = re.compile("x86\s+\[?([a-zA-Z0-9_-]+)\]?.*\n")
+    available_cpu_models = cpu_re.findall(qemu_cpu_help_text)
+
     class MiniSubtest(test_module.Subtest):
         """
         subtest base class for actual tests
@@ -68,18 +72,7 @@ def run_cpuid(test, params, env):
                                               exc_type, exc_value,
                                               exc_traceback.tb_next)))
 
-    def extract_qemu_cpu_models(qemu_cpu_help_text):
-        """
-        Get all cpu models from qemu -cpu help text.
-
-        @param qemu_cpu_help_text: text produced by <qemu> -cpu ?
-        @return: list of cpu models
-        """
-
-        cpu_re = re.compile("x86\s+\[?([a-zA-Z0-9_-]+)\]?.*\n")
-        return cpu_re.findall(qemu_cpu_help_text)
-
-    class test_qemu_cpu_models_list(MiniSubtest):
+    class test_qemu_cpu_model_present(MiniSubtest):
         """
         check CPU models returned by <qemu> -cpu ? are what is expected
         """
@@ -87,25 +80,15 @@ def run_cpuid(test, params, env):
             """
             test method
             """
-            if params.get("cpu_models") is None:
+            cpu_model = params.get("cpu_model")
+            if cpu_model is None:
                 raise error.TestNAError("define cpu_models parameter to check "
                                         "supported CPU models list")
 
-            cmd = qemu_binary + " -cpu ?"
-            result = utils.run(cmd)
-
-            qemu_models = extract_qemu_cpu_models(result.stdout)
-            cpu_models = params.get("cpu_models").split()
-            missing = set(cpu_models) - set(qemu_models)
-            if missing:
-                raise error.TestFail("CPU models %s are not in output "
+            if cpu_model not in available_cpu_models:
+                raise error.TestFail("CPU model %s is not in output "
                                      "of command %s\n%s" %
-                                     (missing, cmd, result.stdout))
-            added = set(qemu_models) - set(cpu_models)
-            if added:
-                raise error.TestFail("Unexpected CPU models %s are in output "
-                                     "of command %s\n%s" %
-                                     (added, cmd, result.stdout))
+                                     (cpu_model, cmd, qemu_cpu_help_text))
 
     def get_guest_cpuid(self, cpu_model, feature=None):
         test_kernel_dir = os.path.join(test.virtdir, "deps",
@@ -179,20 +162,19 @@ def run_cpuid(test, params, env):
         verify that CPU vendor matches requested
         """
         def test(self):
-            if params.get("cpu_models") is None:
-                cmd = qemu_binary + " -cpu ?"
-                result = utils.run(cmd)
-                cpu_models = set(extract_qemu_cpu_models(result.stdout))
+            cpu_model = params.get("cpu_model")
+            if cpu_model == '*': # special mode where all CPU models are checked
+                cpu_models = available_cpu_models
             else:
-                cpu_models = set(params.get("cpu_models").split(' '))
+                cpu_models = [cpu_model]
 
-            cmd = "grep 'vendor_id' /proc/cpuinfo | head -n1 | awk '{print $3}'"
-            cmd_result = utils.run(cmd, ignore_status=True)
-            vendor = cmd_result.stdout.strip()
-            vendor = params.get("vendor", vendor)
 
-            ignore_cpus = set(params.get("ignore_cpu_models","").split(' '))
-            cpu_models = cpu_models - ignore_cpus
+            vendor = params.get("vendor")
+            if vendor is None or vendor == "host":
+                # use host vendor if vendor is not specified
+                cmd = "grep 'vendor_id' /proc/cpuinfo | head -n1 | awk '{print $3}'"
+                cmd_result = utils.run(cmd, ignore_status=True)
+                vendor = cmd_result.stdout.strip()
 
             for cpu_model in cpu_models:
                 out = get_guest_cpuid(self, cpu_model)
