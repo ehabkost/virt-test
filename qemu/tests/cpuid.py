@@ -79,6 +79,33 @@ def run_cpuid(test, params, env):
         cpu_re = re.compile("x86\s+\[?([a-zA-Z0-9_-]+)\]?.*\n")
         return cpu_re.findall(qemu_cpu_help_text)
 
+    def cpu_models_to_test():
+        """Return the list of CPU models to be tested, based on the
+        cpu_models and cpu_model config options.
+
+        Config option "cpu_model" may be used to ask a single CPU model
+        to be tested. Config option "cpu_models" may be used to ask
+        multiple CPU models to be tested.
+
+        If cpu_models is "*", or both cpu_model and cpu_models are not set,
+        all CPU models reported by QEMU will be tested.
+        """
+        models_opt = params.get("cpu_models")
+        model_opt = params.get("cpu_model")
+        cpu_models = set()
+
+        if (models_opt is None and model_opt is None) or models_opt == '*':
+            cmd = qemu_binary + " -cpu '?'"
+            result = utils.run(cmd)
+            cpu_models.update(extract_qemu_cpu_models(result.stdout))
+        elif models_opt:
+            cpu_models.update(models_opt.split())
+
+        if model_opt:
+            cpu_models.add(model_opt)
+
+        return cpu_models
+
     class test_qemu_cpu_models_list(MiniSubtest):
         """
         check CPU models returned by <qemu> -cpu '?' are what is expected
@@ -176,12 +203,7 @@ def run_cpuid(test, params, env):
         verify that CPU vendor matches requested
         """
         def test(self):
-            if params.get("cpu_models") is None:
-                cmd = qemu_binary + " -cpu '?'"
-                result = utils.run(cmd)
-                cpu_models = set(extract_qemu_cpu_models(result.stdout))
-            else:
-                cpu_models = set(params.get("cpu_models").split(' '))
+            cpu_models = cpu_models_to_test()
 
             cmd = "grep 'vendor_id' /proc/cpuinfo | head -n1 | awk '{print $3}'"
             cmd_result = utils.run(cmd, ignore_status=True)
