@@ -79,6 +79,15 @@ def run_cpuid(test, params, env):
         cpu_re = re.compile("x86\s+\[?([a-zA-Z0-9_-]+)\]?.*\n")
         return cpu_re.findall(qemu_cpu_help_text)
 
+    def get_qemu_cpu_models():
+        """Get listing of CPU models supported by QEMU
+
+        Get list of CPU models by parsing the output of <qemu> -cpu '?'
+        """
+        cmd = qemu_binary + " -cpu '?'"
+        result = utils.run(cmd)
+        return extract_qemu_cpu_models(result.stdout)
+
     def cpu_models_to_test():
         """Return the list of CPU models to be tested, based on the
         cpu_models and cpu_model config options.
@@ -95,9 +104,7 @@ def run_cpuid(test, params, env):
         cpu_models = set()
 
         if (models_opt is None and model_opt is None) or models_opt == '*':
-            cmd = qemu_binary + " -cpu '?'"
-            result = utils.run(cmd)
-            cpu_models.update(extract_qemu_cpu_models(result.stdout))
+            cpu_models.update(get_qemu_cpu_models())
         elif models_opt:
             cpu_models.update(models_opt.split())
 
@@ -118,15 +125,11 @@ def run_cpuid(test, params, env):
                 raise error.TestNAError("define cpu_models parameter to check "
                                         "supported CPU models list")
 
-            cmd = qemu_binary + " -cpu '?'"
-            result = utils.run(cmd)
-            qemu_models = extract_qemu_cpu_models(result.stdout)
+            qemu_models = get_qemu_cpu_models()
             cpu_models = params.get("cpu_models").split()
             missing = set(cpu_models) - set(qemu_models)
             if missing:
-                raise error.TestFail("CPU models %s are not in output "
-                                     "of command %s\n%s" %
-                                     (missing, cmd, result.stdout))
+                raise error.TestFail("Some CPU models not in QEMU CPU model list: %s")
             added = set(qemu_models) - set(cpu_models)
             if added:
                 logging.info("Extra CPU models in QEMU CPU listing: %s", added)
