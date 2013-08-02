@@ -1,0 +1,8 @@
+#!/bin/bash
+SRC="$1"
+
+set -e
+while read m v;do
+	mkdir -p shared/deps/cpuid_dumps/$m
+	cp -a "$SRC/$v/$m"/*-dump.txt shared/deps/cpuid_dumps/$m/ || :
+done < tools/machines-versions
