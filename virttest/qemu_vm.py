@@ -2223,6 +2223,10 @@ class VM(virt_vm.BaseVM):
             # Make qemu command
             try:
                 qemu_command = self.make_create_command()
+            except error.TestNAError:
+                # TestNAErrors should be kept as-is so we generate SKIP
+                # results instead of bogus FAIL results
+                raise
             except Exception:
                 for nic in self.virtnet:
                     self._nic_tap_remove_helper(nic)
